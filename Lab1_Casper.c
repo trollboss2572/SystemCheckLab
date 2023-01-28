@@ -2,53 +2,58 @@
 #include <sys/resource.h>
 #include <sys/sysinfo.h>
 #include <string.h>
+#include <sys/utsname.h>
+#include <unistd.h>
+#include <utmp.h>
+#include <stdbool.h>
+#include <stdlib.h>
+//TODO: Make sure to document that values are in Base 10
 
-
-//Prints the header, will be called regardless of the arguments afterwards
-void print_header(int sample_amt, int tick_time)
+//Prints the header, will be called regardless of the arguments afterwards. Returns the memory usage of the function in case it's needed in other print statements
+long print_header(int sample_amt, int tick_time)
 {
 	//Recieve the required data from libraries
-	rusage *pointer_curr_proc = calloc(sizeof(rusage), 1);
+	struct rusage *pointer_curr_proc = malloc(sizeof(rusage));
 	getrusage(RUSAGE_SELF, pointer_curr_proc);
-	long mem_usage = pointer_curr_proc->ru_maxrss;
+	int mem_usage = (pointer_curr_proc->ru_maxrss) / 1000;
 	//Print required statements
     printf("Number of Samples: %d -- every %lf seconds\n", sample_amt, tick_time);
     printf("Memory usage: %d\n", mem_usage);
     printf("_____________________________________________________\n");
 	free(pointer_curr_proc);
+    return(mem_usage);
 }
 
 
 
-
 //Prints system use in the case that --system is called or no limiting arguments are called
-void print_system_use(int sample_amt, int tick_time)
+void print_system_use()
 {
-	//Recieve the required data from libraries
-	sysinfo *pointer_total_memory = calloc(sizeof(sys_info), 1);
-	
 	//Header
     printf("### Memory ### (Phys.Used/Tot -- Virtual Used/Tot)\n");
-    //for loop for outputting the memory recieved by each function
-    for (int i = 0; i < sample_amt; i++)
-    {
-        print_system_samples(free_phy_mem, total_phy_mem, free_virt_mem, total_virt_mem);
-    }
-	//End section
-    printf("_____________________________________________________\n");
-	free(pointer_total_memory);
 }
 
 
 
 //Prints one line of the hardware data in one sample (called only in the for loop of print_system_use)
-void print_system_samples(long used_phy_mem, long total_phy_mem, long used_virt_mem, long total_virt_mem)
+void print_system_samples()
 {
+    sysinfo *pointer = malloc(sizeof(sysinfo));
+    sysinfo(pointer);
+    float total_physical_mem = (pointer->total_ram) / 1000000000 ;
+    float used_phy_mem = total_physical_mem - ((pointer->free_ram) / 1000000000);
+    float total_virt_mem = total_physical_mem + ((pointer->totalswap) / 1000000000);
+    float used_virt_mem = total_virt_mem - ((pointer->freeswap) / 1000000000) + used_virt_mem; 
     printf("%lf / %lf GB -- %lf / %lf GB\n", used_phy_mem, total_phy_mem, used_virt_mem, total_virt_mem);
+    free(pointer);
 }
+
+
 
 void print_user_section()
 {
+    utmp *pointer = malloc(sizeof(utmp))
+    utmp
     printf("### Sessions/users ###\n");
     for (int i = 0; i < sample_amt; i++)
     {
@@ -58,13 +63,68 @@ void print_user_section()
     }
 
 }
+
+
+void print_system_ending()
+{
+    printf("Number of cores: %d\n", core_amt);
+    printf("    Total cpu use: %lf%%\n", cpu_use);
+    printf("____________________________\n");
+}
+
+
+void print_system_info()
+{
+    utsname *pointer = malloc(sizeof(utsname));
+    uname(pointer);
+    printf("### System Information ###\n");
+    printf("System name: %s\n", pointer->sysname);
+    printf("Machine Name: %s\n", pointer->machine);
+    printf("Version: %s\n", pointer->version);
+    printf("Release: %s\n", pointer->release);
+    printf("Architecture: %s\n", arch_name);
+    printf("___________________________\n");
+}
+
+
 void print_sequential(int samples, int tick_time, int ex_code)
 {
-	print_header(samples, tick_time);
+	long process_mem = print_header(samples, tick_time);
+    //Code for printing everything
+    if(ex_code == 0)
+    {
+        print_system_use();
+        //TODO: Implement this part
+    }
 	//Code for only printing system
 	if (ex_code == 1)
 	{
-		print_system_use(samples, tick_time);
+        for(int i = 0; i < samples; i++)
+        {
+            printf(">>>Iteration %d\n", i);
+            printf("Memory usage: %d\n", process_mem);
+            print_system_use();
+            for(int j = 0; j < i; j++)
+            {
+                printf("\n");
+            }
+            print_system_samples();
+            int rest_of_the_lines = samples - i;
+            for(int j = 0; j < rest_of_the_lines; j++)
+            {
+                printf("\n");
+            }
+            print_system_ending();
+        }
+        print_system_info();
+        sleep(tick_time);
+    }
+    //Code for only printing users
+    if (ex_code == 2)
+    {
+            //TODO: Implement this part
+    }
+}
 		
 
 int main(int argc, char **argv)
@@ -88,24 +148,24 @@ int main(int argc, char **argv)
 		{
 			user_only = true;
 		}
-		if(strcmp(*(argv+i), "--graphics")
+		if(strcmp(*(argv+i), "--graphics"))
 		{
 			fancy = true;
 		}
-		if(strcmp(*(argv+i), "--sequential")
+		if(strcmp(*(argv+i), "--sequential"))
 		{
 			sequential = true;
 		}
-		if(strncmp(*(argv+i), "--samples=", sizeof(char) * 10)
+		if(strncmp(*(argv+i), "--samples=", sizeof(char) * 10))
 		{
 			samples = strtol(*(argv+i), NULL, 10);
 		}
-		if(strncmp(*(argv+i), "--tdelay=", sizeof(char) * 9)
+		if(strncmp(*(argv+i), "--tdelay=", sizeof(char) * 9))
 		{
 			tick_time = strtol(*(argv+i), NULL, 10);
 		}
-	//Cover the case of user being an idiot and not reading documentation and inputting exclusive arguments
 	}
+    //Cover the case of user being an idiot and not reading documentation and inputting exclusive arguments
 	if (system_only && user_only)
 	{
 		printf("Not a valid input, --system and --user are exclusive arguments\n")
@@ -142,3 +202,4 @@ int main(int argc, char **argv)
 	print_normal(samples, tick_time, 0);
     return 0;
 }
+//TODO: Implement graphics argument
