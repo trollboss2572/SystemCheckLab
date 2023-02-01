@@ -19,7 +19,7 @@ int print_header(int sample_amt, int tick_time)
 	long mem_usage = (pointer_curr_proc->ru_maxrss);
 	//Print required statements
     printf("Number of Samples: %d -- every %d seconds\n", sample_amt, tick_time);
-    printf("Memory usage: %d kilobytes\n", mem_usage);
+    printf("Memory usage: %ld kilobytes\n", mem_usage);
     printf("_____________________________________________________\n");
 	free(pointer_curr_proc);
     return(mem_usage);
@@ -41,11 +41,11 @@ void print_system_samples()
 {
     struct sysinfo *pointer = malloc(sizeof(sysinfo));
     sysinfo(pointer);
-    float total_physical_mem = (pointer->totalram) / 1000000000 ;
-    float used_phy_mem = total_physical_mem - ((pointer->freeram) / 1000000000);
-    float total_virt_mem = total_physical_mem + ((pointer->totalswap) / 1000000000);
-    float used_virt_mem = total_virt_mem - ((pointer->freeswap) / 1000000000) + used_virt_mem; 
-    printf("%f / %f GB -- %f / %f GB\n", used_phy_mem, total_physical_mem, used_virt_mem, total_virt_mem);
+    int total_physical_mem = (pointer->totalram) / 1000000000 ;
+    int used_phy_mem = total_physical_mem - ((pointer->freeram) / 1000000000);
+    int total_virt_mem = total_physical_mem + ((pointer->totalswap) / 1000000000);
+    int used_virt_mem = total_virt_mem - ((pointer->freeswap) / 1000000000) + used_virt_mem; 
+    printf("%d / %d GB -- %d / %d GB\n", used_phy_mem, total_physical_mem, used_virt_mem, total_virt_mem);
     free(pointer);
 }
 
@@ -55,13 +55,20 @@ void print_user_section()
 {
 	setutent();
     printf("### Sessions/users ###\n");
-    for (struct utmp *pointer = malloc(sizeof(struct utmp)); getutent() != NULL; pointer = getutent())
+	struct utmp *pointer = getutent();
+    while(pointer != NULL)
     {
+		if (pointer->ut_type == USER_PROCESS)
+		{
 		char *username = pointer->ut_user;
 		char *dir = pointer->ut_line;
 		char *operation = pointer->ut_host;
-        printf("%s          %s  (%s)", username, dir, operation);
+        printf("%s          %s  (%s)\n", username, dir, operation);
+		}
+		pointer = getutent();
+		printf("UwU");
     }
+	free(pointer);
 	endutent();
 }
 //Helper function for print_system_ending, which calculates the difference in cpu_use given a string which comes from reading the /proc/stat file
@@ -220,7 +227,7 @@ int main(int argc, char **argv)
 	bool user_only = false;
 	bool sequential = false;
 	//This for loop searches all inputs for any modifications to be made to the basic print structure
-	for(int i = 0; i < argc; i++)
+	for(int i = 1; i < argc; i++)
 	{
 		if(strcmp(*(argv+i), "--system") == 0)
 		{
@@ -238,12 +245,12 @@ int main(int argc, char **argv)
 		{
 			sequential = true;
 		}
-		if(strlen(*(argv+i)) == 1 && isdigit(**(argv+i)) && !samples_initialized);
+		if(isdigit(**(argv+i)) && ! samples_initialized)
 		{
 			samples = strtol(*(argv+i), NULL, 10);
 			samples_initialized = true;
 		}
-		if(strlen(*(argv+i)) == 1 && isdigit(**(argv+i)) && samples_initialized && !tick_time_initialized)
+		if(isdigit(**(argv+i)) && samples_initialized && !tick_time_initialized)
 		{
 			tick_time = strtol(*(argv+i), NULL, 10);
 			tick_time_initialized = true;
