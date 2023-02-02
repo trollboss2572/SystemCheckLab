@@ -53,9 +53,6 @@ void print_user_section()
     {
 		if (pointer->ut_type == USER_PROCESS)
 		{
-		char *username = pointer->ut_user;
-		char *dir = pointer->ut_line;
-		char *operation = pointer->ut_host;
         printf("%s\t\t%s\t(%s)\n", pointer->ut_user, pointer->ut_line, pointer->ut_host);
 		}
 		pointer = getutent();
@@ -330,12 +327,18 @@ int main(int argc, char **argv)
 		{
 			sequential = true;
 		}
-		if (strncmp(*(argv+i), "--tdelay=", 9) == 0 && samples_initialized && !(tick_time_initialized))
+		if (strncmp(*(argv+i), "--tdelay=", 9) == 0 && !(tick_time_initialized))
 		{
-			if(isdigit(*(argv+i)[10]) > 0)
+			if(isdigit((*(argv+i))[9]) > 0)
 			{
 				char *checker = memchr(*(argv+i), '=', 20);
-				tick_time = strtol(checker, NULL, 10);
+				char num_str[10];
+				for(int j = 1; *(checker+j) && j < 11; j++)
+				{
+					num_str[i-1] = *(checker+i);
+				}
+				printf("%s", num_str);
+				tick_time = strtol(num_str, NULL, 10);
 				tick_time_initialized = true;
 			}
 			else
@@ -354,8 +357,13 @@ int main(int argc, char **argv)
 			if(isdigit((*(argv+i))[10]) > 0)
 			{
 				char *checker = memchr(*(argv+i), '=', 20);
-				printf("%s", checker);
-				samples = strtol(checker, NULL, 10);
+				char num_str[10];
+				for(int i = 1; *(checker+i) && i < 11; i++)
+				{
+					num_str[i-1] = *(checker+i);
+				}
+				printf("%s", num_str);
+				samples = strtol(num_str, NULL, 10);
 				samples_initialized = true;
 			}
 			else
