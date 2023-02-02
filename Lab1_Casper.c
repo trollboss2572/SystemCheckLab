@@ -25,8 +25,6 @@ int print_header(int sample_amt, int tick_time)
     return(mem_usage);
 }
 
-
-
 //Prints system use in the case that --system is called or no limiting arguments are called
 void print_system_use()
 {
@@ -34,22 +32,17 @@ void print_system_use()
     printf("### Memory ### (Phys.Used/Tot -- Virtual Used/Tot)\n");
 }
 
-
-
 //Prints one line of the hardware data in one sample (called only in the for loop of print_system_use)
 void print_system_samples()
 {
-    struct sysinfo *pointer = malloc(sizeof(sysinfo));
-    sysinfo(pointer);
-    int total_physical_mem = (pointer->totalram) / 1000000000 ;
-    int used_phy_mem = total_physical_mem - ((pointer->freeram) / 1000000000);
-    int total_virt_mem = total_physical_mem + ((pointer->totalswap) / 1000000000);
-    int used_virt_mem = total_virt_mem - ((pointer->freeswap) / 1000000000) + used_virt_mem; 
-    printf("%d / %d GB -- %d / %d GB\n", used_phy_mem, total_physical_mem, used_virt_mem, total_virt_mem);
-    free(pointer);
+    struct sysinfo pointer;
+	sysinfo(&pointer);
+    float total_physical_mem = ((float)(pointer.totalram)) / 1000000000;
+    float used_phy_mem = total_physical_mem - (((float)(pointer.freeram)) / 1000000000);
+    float total_virt_mem = total_physical_mem + (((float)(pointer.totalswap)) / 1000000000);
+    float used_virt_mem = total_virt_mem - ((float)(pointer.freeswap) / 1000000000) - (((float)(pointer.freeram)) / 1000000000);
+    printf("%.4f / %.4f GB -- %.4f / %.4f GB\n", used_phy_mem, total_physical_mem, used_virt_mem, total_virt_mem);
 }
-
-
 
 void print_user_section()
 {
@@ -63,60 +56,70 @@ void print_user_section()
 		char *username = pointer->ut_user;
 		char *dir = pointer->ut_line;
 		char *operation = pointer->ut_host;
-        printf("%s          %s  (%s)\n", username, dir, operation);
+        printf("%s\t\t%s\t(%s)\n", pointer->ut_user, pointer->ut_line, pointer->ut_host);
 		}
 		pointer = getutent();
-		printf("UwU");
-    }
-	free(pointer);
+	}
 	endutent();
+	printf("_______________________________________\n");
 }
 //Helper function for print_system_ending, which calculates the difference in cpu_use given a string which comes from reading the /proc/stat file
-long get_cpu_use(char *cpu_info)
+long get_cpu_use(char *cpu_info, long *idle)
 {
 	long cpu_use = 0;
 	char *leftover;
-	//The first 3 numeric values of the first line of /proc/cpuinfo refer to the time taken by normal and nice processes from the user and time taken by processes executing in the kernel, which add up to all the time taken by processes total
-	cpu_use += strtol(cpu_info, &leftover, 10);
-	cpu_use += strtol(leftover, &leftover, 10);
-	cpu_use += strtol(leftover, &leftover, 10);
-	//Idle process line, which does not contribute to our total
-	strtol(leftover, &leftover, 10);
-	cpu_use += strtol(leftover, &leftover, 10);
-	cpu_use += strtol(leftover, &leftover, 10);
-	cpu_use += strtol(leftover, &leftover, 10);
+	for(int i = 0; i < 7; i++)
+	{
+		leftover = memchr(cpu_info, ' ', strlen(cpu_info));
+		if (i == 4)
+		{
+			*(idle) = strtol(leftover, &leftover, 10);
+			cpu_use += *idle;
+			continue;
+		}
+		cpu_use += strtol(leftover, &leftover, 10);
+	}
 	return cpu_use;
 }
 
 //System ending requires us to print the cpu use and the number of CPUs total. Accepts a long that is the CPU use of the previous check iteration. In case old_cpu_use == 0, then there has been no previous check.
 //Returns the current cpu use in case of needing that value to recur the next iteration
-long print_system_ending(long old_cpu_use)
+long print_system_ending(long old_cpu_use, long *old_idle)
 {
 	//Initialize our variables to read from the file
 	char new_line[4];
 	int core_amt = 0;
-	char *cpu_total;
+	char cpu_total[255];
 	//Open the file for reading
-	FILE *file = fopen("/proc/cpuinfo", "r");
+	FILE *file = fopen("/proc/stat", "r");
 	//Get the first line, which holds the cpu use data
 	fgets(cpu_total, 255, file);
-	long cpu_use = get_cpu_use(cpu_total);
-	float diff_cpu_use = 0;
+	long new_idle;
+	long cpu_use = get_cpu_use(cpu_total, &new_idle);
+	float print_val = 0;
 	if (old_cpu_use != 0)
 	{
-		diff_cpu_use = (cpu_use - old_cpu_use) / cpu_use;
+		int cp_diff = (cpu_use - old_cpu_use);
+		int idle_diff = (new_idle - *old_idle);
+		int actual_cp = cp_diff - idle_diff;
+		print_val = (float)(actual_cp)/((cpu_use + old_cpu_use)-(new_idle + *old_idle));
 	}
-	while(fgets(new_line, 3, file) != NULL)
+	char *end_check = fgets(new_line, 4, file);
+	while(end_check)
 	{
 		//Get the first 3 characters for each line after the first. For each cpu, the new line will begin with the text "cpu" so we can list how many cpus there are that way
 		if (strcmp(new_line, "cpu") == 0)
 		{
 			core_amt++;
 		}
+		end_check = fgets(new_line, 4, file);
 	}
+	print_val = print_val * 100;
+	*old_idle = new_idle; 
 	fclose(file);
     printf("Number of cores: %d\n", core_amt);
-    printf("    Total cpu use: %.4f%%\n", diff_cpu_use);
+	printf("\tCPU Usage: %.4f %%\n", print_val);
+    //printf("    Total cpu use: %.4f%%\n", diff_cpu_use);
     printf("____________________________\n");
 	return(cpu_use);
 }
@@ -124,31 +127,31 @@ long print_system_ending(long old_cpu_use)
 
 void print_system_info()
 {
-    struct utsname *pointer = malloc(sizeof(struct utsname));
-    uname(pointer);
+    struct utsname pointer;
+    uname(&pointer);
     printf("### System Information ###\n");
-    printf("System name: %s\n", pointer->sysname);
-    printf("Machine Name: %s\n", pointer->nodename);
-    printf("Version: %s\n", pointer->version);
-    printf("Release: %s\n", pointer->release);
-    printf("Architecture: %s\n", pointer->machine);
+    printf("System name: %s\n", pointer.sysname);
+    printf("Machine Name: %s\n", pointer.nodename);
+    printf("Version: %s\n", pointer.version);
+    printf("Release: %s\n", pointer.release);
+    printf("Architecture: %s\n", pointer.machine);
     printf("___________________________\n");
-	free(pointer);
 }
 
 
 void print_sequential(int samples, int tick_time, int ex_code)
 {
 	int process_mem = print_header(samples, tick_time);
-    //Code for printing everything
 	long cpu_use = 0;
-	print_header(samples, tick_time);
+	long idle_proc = 0;
+	//Code for printing everything
     if(ex_code == 0)
     {
 		for(int i = 0; i < samples; i++)
         {
             printf(">>>Iteration %d\n", i);
-            printf("Memory usage: %d\n", process_mem);
+            printf("Memory usage: %d kilobytes\n", process_mem);
+			printf("____________________________\n");
             print_system_use();
             for(int j = 0; j < i; j++)
             {
@@ -156,12 +159,13 @@ void print_sequential(int samples, int tick_time, int ex_code)
             }
             print_system_samples();
             int rest_of_the_lines = samples - i;
-            for(int j = 0; j < rest_of_the_lines; j++)
+            for(int j = 1; j < rest_of_the_lines; j++)
             {
                 printf("\n");
             }
+			printf("____________________________\n");
 			print_user_section();
-            cpu_use = print_system_ending(cpu_use);
+            cpu_use = print_system_ending(cpu_use, &idle_proc);
 			sleep(tick_time);
         }
     }
@@ -171,7 +175,8 @@ void print_sequential(int samples, int tick_time, int ex_code)
         for(int i = 0; i < samples; i++)
         {
             printf(">>>Iteration %d\n", i);
-            printf("Memory usage: %d\n", process_mem);
+            printf("Memory usage: %d kilobytes\n", process_mem);
+			printf("____________________________\n");
             print_system_use();
             for(int j = 0; j < i; j++)
             {
@@ -179,11 +184,12 @@ void print_sequential(int samples, int tick_time, int ex_code)
             }
             print_system_samples();
             int rest_of_the_lines = samples - i;
-            for(int j = 0; j < rest_of_the_lines; j++)
+            for(int j = 1; j < rest_of_the_lines; j++)
             {
                 printf("\n");
             }
-            cpu_use = print_system_ending(cpu_use);
+			printf("____________________________\n");
+            cpu_use = print_system_ending(cpu_use, &idle_proc);
 			sleep(tick_time);
         }
     }
@@ -193,9 +199,10 @@ void print_sequential(int samples, int tick_time, int ex_code)
         for(int i = 0; i < samples; i++)
         {
 			printf(">>>Iteration %d\n", i);
-            printf("Memory usage: %d\n", process_mem);
+            printf("Memory usage: %d kilobytes\n", process_mem);
+			printf("____________________________\n");
 			print_user_section();
-			cpu_use = print_system_ending(cpu_use);
+			cpu_use = print_system_ending(cpu_use, &idle_proc);
             sleep(tick_time);
         }
     }
@@ -204,15 +211,93 @@ void print_sequential(int samples, int tick_time, int ex_code)
 
 void print_normal(int samples, int tick_time, int exclusion_code)
 {
-	char *pointer_old_info[samples];
-	for (int i = 0; i < samples; i++)
+	long cpu_use = 0;
+	long idle_proc = 0;
+	//Code for printing only users
+	if (exclusion_code == 2)
 	{
-		
+		for(int i = 0; i < samples; i++)
+        {
+			system("clear");
+            print_header(samples, tick_time);
+			print_user_section();
+			cpu_use = print_system_ending(cpu_use, &idle_proc);
+            sleep(tick_time);
+        }
+		print_system_info();
+		return;
+	}
+	char old_str[samples][255];
+	char str[255];
+    struct sysinfo pointer;
+	float total_physical_mem = 0;
+	float used_phy_mem = 0;
+	float total_virt_mem = 0;
+	float used_virt_mem = 0;
+	//Print only system
+	if (exclusion_code == 1)
+	{
+		for(int i = 0; i < samples; i++)
+        {
+			system("clear");
+			print_header(samples, tick_time);
+			print_system_use();
+			for(int j = 0; j < i; j++)
+            {
+                printf("%s", old_str[j]);
+            }
+			sysinfo(&pointer);
+    		total_physical_mem = ((float)(pointer.totalram)) / 1000000000;
+    		used_phy_mem = total_physical_mem - (((float)(pointer.freeram)) / 1000000000);
+    		total_virt_mem = total_physical_mem + (((float)(pointer.totalswap)) / 1000000000);
+    		used_virt_mem = total_virt_mem - ((float)(pointer.freeswap) / 1000000000) - (((float)(pointer.freeram)) / 1000000000);
+    		sprintf(str, "%.4f / %.4f GB -- %.4f / %.4f GB\n", used_phy_mem, total_physical_mem, used_virt_mem, total_virt_mem);
+			strncpy(old_str[i], str, 254);
+            int rest_of_the_lines = samples - i;
+            for(int j = 1; j < rest_of_the_lines; j++)
+            {
+                printf("\n");
+            }
+			printf("____________________________\n");
+            cpu_use = print_system_ending(cpu_use, &idle_proc);
+			sleep(tick_time);
+        }
+		print_system_info();
+		return;
+	}
+	//Must print all values
+	if (exclusion_code == 0)
+	{
+		for(int i = 0; i < samples; i++)
+        {
+			system("clear");
+			print_header(samples, tick_time);
+			print_system_use();
+			sysinfo(&pointer);
+    		total_physical_mem = ((float)(pointer.totalram)) / 1000000000;
+    		used_phy_mem = total_physical_mem - (((float)(pointer.freeram)) / 1000000000);
+    		total_virt_mem = total_physical_mem + (((float)(pointer.totalswap)) / 1000000000);
+    		used_virt_mem = total_virt_mem - ((float)(pointer.freeswap) / 1000000000) - (((float)(pointer.freeram)) / 1000000000);
+    		sprintf(str, "%.4f / %.4f GB -- %.4f / %.4f GB\n", used_phy_mem, total_physical_mem, used_virt_mem, total_virt_mem);
+			strncpy(old_str[i], str, 254);
+			for(int j = 0; j < i+1; j++)
+            {
+                printf("%s",old_str[j]);
+            }
+            int rest_of_the_lines = samples - i;
+            for(int j = 1; j < rest_of_the_lines; j++)
+            {
+                printf("\n");
+            }
+			printf("____________________________\n");
+			print_user_section();
+            cpu_use = print_system_ending(cpu_use, &idle_proc);
+			sleep(tick_time);
+        }
+		print_system_info();
+		return;
 	}
 }
-
-
-
 
 int main(int argc, char **argv)
 {
@@ -245,15 +330,44 @@ int main(int argc, char **argv)
 		{
 			sequential = true;
 		}
-		if(isdigit(**(argv+i)) && ! samples_initialized)
+		if (strncmp(*(argv+i), "--tdelay=", 9) == 0 && samples_initialized && !(tick_time_initialized))
+		{
+			if(isdigit(*(argv+i)[10]) > 0)
+			{
+				char *checker = memchr(*(argv+i), '=', 20);
+				tick_time = strtol(checker, NULL, 10);
+				tick_time_initialized = true;
+			}
+			else
+			{
+				printf("Invalid input, the values following --tdelay= must be an integer");
+				return 1;
+			}
+		}
+		if (isdigit(**(argv+i)) && samples_initialized && !(tick_time_initialized))
+		{
+			tick_time = strtol((*(argv+i)), NULL, 10);
+			tick_time_initialized = true;
+		}
+		if (strncmp(*(argv+i), "--samples=", 10) == 0 && !(samples_initialized))
+		{
+			if(isdigit((*(argv+i))[10]) > 0)
+			{
+				char *checker = memchr(*(argv+i), '=', 20);
+				printf("%s", checker);
+				samples = strtol(checker, NULL, 10);
+				samples_initialized = true;
+			}
+			else
+			{
+				printf("Invalid input, the values following --samples= must be an integer");
+				return 1;
+			}
+		}
+		if (isdigit(**(argv+i)) && !(samples_initialized))
 		{
 			samples = strtol(*(argv+i), NULL, 10);
 			samples_initialized = true;
-		}
-		if(isdigit(**(argv+i)) && samples_initialized && !tick_time_initialized)
-		{
-			tick_time = strtol(*(argv+i), NULL, 10);
-			tick_time_initialized = true;
 		}
 	}
     //Cover the case of user being an idiot and not reading documentation and inputting exclusive arguments
