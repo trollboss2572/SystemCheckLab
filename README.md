@@ -89,4 +89,8 @@ as arguments to the method itself. The actual return value of this method is an 
 
 The main function first intitializes values for all the different arguments the user may pass, then parses them using the take_awguments_UwU helper
 method.
-A check is then made to ensure that 
+A check is then made to ensure that all arguments are accepted. main then checks each flag, to see if we need to print only certain info. 
+First, it checks if either --system or --user were passed, and if so, prints the current info using an exclusion code. This exclusion code allows
+our methods to easily check what info they should be printing, if 0, everything is printed. 1 means only system is printed, 2 means only user.
+On all calls, we check to see if the user wants normally printed info, or sequentially printed info, calling the current helper method as needed.
+Also, the --graphics arguments is also checked to ensure it was printed or not.
