@@ -36,45 +36,58 @@ void print_system_use()
 //Prints one line of the hardware data in one sample (called only in the for loop of print_system_use)
 void print_system_samples()
 {
+	//Initializer to the system info pointer, required by the sysinfo library
     struct sysinfo pointer;
 	sysinfo(&pointer);
+	//Convert to GB as required
     float total_physical_mem = ((float)(pointer.totalram)) / 1000000000;
     float used_phy_mem = total_physical_mem - (((float)(pointer.freeram)) / 1000000000);
     float total_virt_mem = total_physical_mem + (((float)(pointer.totalswap)) / 1000000000);
     float used_virt_mem = total_virt_mem - ((float)(pointer.freeswap) / 1000000000) - (((float)(pointer.freeram)) / 1000000000);
+	//print statement
     printf("%.4f / %.4f GB -- %.4f / %.4f GB\n", used_phy_mem, total_physical_mem, used_virt_mem, total_virt_mem);
 }
 
 void print_user_section()
 {
+	//Initialize utent as required in the man file
 	setutent();
     printf("### Sessions/users ###\n");
+	//Initialize a pointer to a utmp structure which holds the required info
 	struct utmp *pointer = getutent();
     while(pointer != NULL)
     {
+		//Ensure that the process is a user process (make sure we are getting the correct info)
 		if (pointer->ut_type == USER_PROCESS)
 		{
         printf("%s\t\t%s\t(%s)\n", pointer->ut_user, pointer->ut_line, pointer->ut_host);
 		}
+		//Keep getting new utents until we have succesfully checked all processes for our processes we care about
 		pointer = getutent();
 	}
+	//Close the utent file
 	endutent();
 	printf("_______________________________________\n");
 }
 //Helper function for print_system_ending, which calculates the difference in cpu_use given a string which comes from reading the /proc/stat file
 long get_cpu_use(char *cpu_info, long *idle)
 {
+	//Accumulator variable, return value after checking the cpu_info string
 	long cpu_use = 0;
 	char *leftover;
+	//Our relevant data is only carried in our first 8 numeric values
 	for(int i = 0; i < 7; i++)
 	{
+		//cpu data is split with white spaces, iterate along those white spaces to get the data we need
 		leftover = memchr(cpu_info, ' ', strlen(cpu_info));
+		//The 4th value will be our idle process number, so we must pass that value to the value pointed at by idle
 		if (i == 4)
 		{
 			*(idle) = strtol(leftover, &leftover, 10);
 			cpu_use += *idle;
 			continue;
 		}
+		//Convert the number from string to a long (a numeric value we can work with and return)
 		cpu_use += strtol(leftover, &leftover, 10);
 	}
 	return cpu_use;
@@ -93,15 +106,18 @@ long print_system_ending(long old_cpu_use, long *old_idle)
 	//Get the first line, which holds the cpu use data
 	fgets(cpu_total, 255, file);
 	long new_idle;
+	//Pass the first line of the file, along with a pointer to the idle value we need to use later on. The helper function returns the numeric value and changes the value pointed at.
 	long cpu_use = get_cpu_use(cpu_total, &new_idle);
 	float print_val = 0;
 	if (old_cpu_use != 0)
 	{
+		//Get the difference in use values, making sure that our PC doesn't round out any data by adding large values to other large values and small to small.
 		int cp_diff = (cpu_use - old_cpu_use);
 		int idle_diff = (new_idle - *old_idle);
 		int actual_cp = cp_diff - idle_diff;
 		print_val = (float)(actual_cp)/((cpu_use + old_cpu_use)-(new_idle + *old_idle));
 	}
+	//Get a new line and check for number of CPUs
 	char *end_check = fgets(new_line, 4, file);
 	while(end_check)
 	{
@@ -110,14 +126,16 @@ long print_system_ending(long old_cpu_use, long *old_idle)
 		{
 			core_amt++;
 		}
+		//Iterative step
 		end_check = fgets(new_line, 4, file);
 	}
+	//Get percentage
 	print_val = print_val * 100;
+	//Pass the new idle value for potential for next calculation
 	*old_idle = new_idle; 
 	fclose(file);
     printf("Number of cores: %d\n", core_amt);
 	printf("\tCPU Usage: %.4f %%\n", print_val);
-    //printf("    Total cpu use: %.4f%%\n", diff_cpu_use);
     printf("____________________________\n");
 	return(cpu_use);
 }
@@ -125,6 +143,7 @@ long print_system_ending(long old_cpu_use, long *old_idle)
 
 void print_system_info()
 {
+	//Initialize a structure with all of our info, then get the info from that structure and print them
     struct utsname pointer;
     uname(&pointer);
     printf("### System Information ###\n");
@@ -136,7 +155,7 @@ void print_system_info()
     printf("___________________________\n");
 }
 
-
+//Prints sequential non-graphics. The ex_code determines which terms to exclude, if any.
 void print_sequential(int samples, int tick_time, int ex_code)
 {
 	int process_mem = print_header(samples, tick_time);
@@ -207,6 +226,7 @@ void print_sequential(int samples, int tick_time, int ex_code)
 	print_system_info();
 }
 
+//Prints normal non-graphics. The ex_code determines which terms to exclude, if any.
 void print_normal(int samples, int tick_time, int exclusion_code)
 {
 	long cpu_use = 0;
@@ -240,18 +260,22 @@ void print_normal(int samples, int tick_time, int exclusion_code)
 			system("clear");
 			print_header(samples, tick_time);
 			print_system_use();
-			for(int j = 0; j < i; j++)
-            {
-                printf("%s", old_str[j]);
-            }
+			//Get the new values to print in our new system line.
 			sysinfo(&pointer);
     		total_physical_mem = ((float)(pointer.totalram)) / 1000000000;
     		used_phy_mem = total_physical_mem - (((float)(pointer.freeram)) / 1000000000);
     		total_virt_mem = total_physical_mem + (((float)(pointer.totalswap)) / 1000000000);
     		used_virt_mem = total_virt_mem - ((float)(pointer.freeswap) / 1000000000) - (((float)(pointer.freeram)) / 1000000000);
     		sprintf(str, "%.4f / %.4f GB -- %.4f / %.4f GB\n", used_phy_mem, total_physical_mem, used_virt_mem, total_virt_mem);
+			//Copy the new string value in our new array
 			strncpy(old_str[i], str, 254);
+			//Print all previous values saved in the old_str array
+			for(int j = 0; j <= i; j++)
+            {
+                printf("%s", old_str[j]);
+            }
             int rest_of_the_lines = samples - i;
+			//Make new lines to generate white space before the next print statements
             for(int j = 1; j < rest_of_the_lines; j++)
             {
                 printf("\n");
@@ -271,18 +295,22 @@ void print_normal(int samples, int tick_time, int exclusion_code)
 			system("clear");
 			print_header(samples, tick_time);
 			print_system_use();
+			//Get the new values to print in our new system line
 			sysinfo(&pointer);
     		total_physical_mem = ((float)(pointer.totalram)) / 1000000000;
     		used_phy_mem = total_physical_mem - (((float)(pointer.freeram)) / 1000000000);
     		total_virt_mem = total_physical_mem + (((float)(pointer.totalswap)) / 1000000000);
     		used_virt_mem = total_virt_mem - ((float)(pointer.freeswap) / 1000000000) - (((float)(pointer.freeram)) / 1000000000);
     		sprintf(str, "%.4f / %.4f GB -- %.4f / %.4f GB\n", used_phy_mem, total_physical_mem, used_virt_mem, total_virt_mem);
+			//Copy the new string value in our array
 			strncpy(old_str[i], str, 254);
-			for(int j = 0; j < i+1; j++)
+			//Print all previous values saved
+			for(int j = 0; j <= i; j++)
             {
                 printf("%s",old_str[j]);
             }
             int rest_of_the_lines = samples - i;
+			//new lines to generate white space
             for(int j = 1; j < rest_of_the_lines; j++)
             {
                 printf("\n");
@@ -337,13 +365,13 @@ long print_fancy_system_ending_seq(long old_cpu_use, long *old_idle)
 	{
 		printf("|");
 	}
-	printf("%.2f\n", print_val);
+	printf("%.3f\n", print_val);
     printf("____________________________\n");
 	return(cpu_use);
 }
 
 //Same as above method, except now we must account for saving our old strings to print them out after each iteration
-long print_fancy_system_ending_normal(long old_cpu_use, long *old_idle, float *old_cpu_uses[], int index)
+long print_fancy_system_ending_normal(long old_cpu_use, long *old_idle, float *old_cpu_uses, int index)
 {
 		//Initialize our variables to read from the file
 	char new_line[4];
@@ -378,15 +406,17 @@ long print_fancy_system_ending_normal(long old_cpu_use, long *old_idle, float *o
 	fclose(file);
     printf("Number of cores: %d\n", core_amt);
 	printf("\tCPU Usage: %.4f %%\n", print_val);
-	*(old_cpu_uses[index]) = print_val;
+	//Update our array to save the difference value
+	*(old_cpu_uses + index) = print_val;
+	//Print all previous iterations of our cpu use difference, along with the  | to represent the difference
 	for (int i = 0; i < index; i++)
 	{
 		printf("\t\t ||");
-		for(float f = 0; f < print_val; f += .05)
+		for(float f = 0; f < *(old_cpu_uses + i); f += .0005)
 		{
 			printf("|");
 		}
-		printf("%.2f\n", *(old_cpu_uses[i]));
+		printf("%.4f\n", *(old_cpu_uses + i));
 	}
     printf("____________________________\n");
 	return(cpu_use);
@@ -410,7 +440,7 @@ float print_fancy_system_samples(float old_used_phy_mem)
 	else
 	{
 		float diff = fabs(used_phy_mem-old_used_phy_mem);
-		for(float i = .01; i < diff; i += .01)
+		for(float i = 0; i < diff; i += .001)
 		{
 			printf("#");
 		}
@@ -496,7 +526,7 @@ void print_fancy_normal(int samples, int tick_time, int ex_code)
 {
 	long cpu_use = 0;
 	long idle_proc = 0;
-	float *old_cpu_uses[samples];
+	float old_cpu_uses[samples];
 	int index = 0;
 	//Code for printing only users
 	if (ex_code == 2)
@@ -515,10 +545,11 @@ void print_fancy_normal(int samples, int tick_time, int ex_code)
 	}
 	char old_str[samples][255];
 	char str[255];
+	float diff_array[samples];
+	float used_phy_mem_array[samples];
     struct sysinfo pointer;
 	float total_physical_mem = 0;
 	float used_phy_mem = 0;
-	float old_used_phy_mem = 0;
 	float total_virt_mem = 0;
 	float used_virt_mem = 0;
 	//Print only system
@@ -529,35 +560,30 @@ void print_fancy_normal(int samples, int tick_time, int ex_code)
 			system("clear");
 			print_header(samples, tick_time);
 			print_system_use();
-			for(int j = 0; j < i; j++)
-            {
-                printf("%s", old_str[j]);
-            }
 			sysinfo(&pointer);
     		total_physical_mem = ((float)(pointer.totalram)) / 1000000000;
     		used_phy_mem = total_physical_mem - (((float)(pointer.freeram)) / 1000000000);
     		total_virt_mem = total_physical_mem + (((float)(pointer.totalswap)) / 1000000000);
     		used_virt_mem = total_virt_mem - ((float)(pointer.freeswap) / 1000000000) - (((float)(pointer.freeram)) / 1000000000);
-    		sprintf(str, "%.4f / %.4f GB -- %.4f / %.4f GB", used_phy_mem, total_physical_mem, used_virt_mem, total_virt_mem);
-			if (i > 0)
+			used_phy_mem_array[i] = used_phy_mem;
+			if (i != 0)
 			{
-				printf("\t|");
-				if (old_used_phy_mem == 0)
-				{
-					printf("o 0.00 (%.4f)\n", used_phy_mem);
-				}
-				else
-				{
-					float diff = used_phy_mem-old_used_phy_mem;
-					for(float i = 0; i < (used_phy_mem-old_used_phy_mem); i += .01)
-					{
-						printf("#");
-					}
-					printf("* %.4f (%.4f)\n", diff, used_phy_mem);
-				}
-			}			
-			old_used_phy_mem = used_phy_mem;
+				diff_array[i] = used_phy_mem - used_phy_mem_array[i-1];
+			}
+    		sprintf(str, "%.4f / %.4f GB -- %.4f / %.4f GB", used_phy_mem, total_physical_mem, used_virt_mem, total_virt_mem);		
 			strncpy(old_str[i], str, 254);
+			printf("%s", old_str[0]);
+			printf("\t|o 0.00 (%.4f)\n", used_phy_mem_array[0]);
+			for(int j = 1; j <= i; j++)
+            {
+                printf("%s", old_str[j]);
+				printf("\t|");
+				for(float k = 0; k < diff_array[j]; k += .01)
+				{
+					printf("#");
+				}
+				printf("* %.4f (%.4f)\n", diff_array[j], used_phy_mem);
+			}
             int rest_of_the_lines = samples - i;
             for(int j = 1; j < rest_of_the_lines; j++)
             {
@@ -579,32 +605,30 @@ void print_fancy_normal(int samples, int tick_time, int ex_code)
 			system("clear");
 			print_header(samples, tick_time);
 			print_system_use();
-			for(int j = 0; j < i; j++)
-            {
-                printf("%s", old_str[j]);
-            }
 			sysinfo(&pointer);
     		total_physical_mem = ((float)(pointer.totalram)) / 1000000000;
     		used_phy_mem = total_physical_mem - (((float)(pointer.freeram)) / 1000000000);
     		total_virt_mem = total_physical_mem + (((float)(pointer.totalswap)) / 1000000000);
     		used_virt_mem = total_virt_mem - ((float)(pointer.freeswap) / 1000000000) - (((float)(pointer.freeram)) / 1000000000);
-    		sprintf(str, "%.4f / %.4f GB -- %.4f / %.4f GB", used_phy_mem, total_physical_mem, used_virt_mem, total_virt_mem);
-			printf("\t|");
-			if (old_used_phy_mem == 0)
+			used_phy_mem_array[i] = used_phy_mem;
+			if (i != 0)
 			{
-				printf("o 0.00 (%.4f)\n", used_phy_mem);
+				diff_array[i] = fabs(used_phy_mem - used_phy_mem_array[i-1]);
 			}
-			else
-			{
-				float diff = used_phy_mem-old_used_phy_mem;
-				for(float i = 0; i < (used_phy_mem-old_used_phy_mem); i += .01)
+    		sprintf(str, "%.4f / %.4f GB -- %.4f / %.4f GB", used_phy_mem, total_physical_mem, used_virt_mem, total_virt_mem);		
+			strncpy(old_str[i], str, 254);
+			printf("%s", old_str[0]);
+			printf("\t|o 0.00 (%.4f)\n", used_phy_mem_array[0]);
+			for(int j = 1; j < i; j++)
+            {
+                printf("%s", old_str[j]);
+				printf("\t|");
+				for(float k = 0; k < diff_array[j]; k += .01)
 				{
 					printf("#");
 				}
-				printf("* %.4f (%.4f)\n", diff, used_phy_mem);
+				printf("* %.4f (%.4f)\n", diff_array[j], used_phy_mem);
 			}
-			old_used_phy_mem = used_phy_mem;
-			strncpy(old_str[i], str, 254);
             int rest_of_the_lines = samples - i;
             for(int j = 1; j < rest_of_the_lines; j++)
             {
@@ -767,4 +791,3 @@ int main(int argc, char **argv)
 	print_normal(samples, tick_time, 0);
     return 0;
 }
-//TODO: Implement graphics argument
